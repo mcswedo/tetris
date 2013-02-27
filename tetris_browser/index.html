@@ -1,0 +1,282 @@
+<!DOCTYPE html5>
+
+<!-- Changelog
+  2/7 Added jQuery to fix key Events and added touch events as well
+
+  2/21 Implemented row completion. HOWEVER, it only works for ONE ROW, and slightly INCORRECTLY. Did other things too. 
+  
+  2/22 Line completion now works. Currently attempting to make this page responsive.
+-->
+
+<head>
+   <meta charset="utf-8">
+   <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+   <title>Tetris</title>
+<style>
+
+    html, body { 
+      width:100%; 
+      height:100%; 
+      overflow:hidden;
+      background-color: #DDD;
+      font-family: Arial, sans-serif;
+    }
+	#main-canvas {
+	background-color: #333;
+	
+    }
+	#next {
+	  border-width: 0px;
+	  background-color: #444;
+	  margin: 5px;	
+	}
+	
+	
+	h1 {
+      text-align:center;
+      font-size:1.5em;
+	}
+	h3 {
+	  color: #FFF;	
+	}
+	
+	#container {
+      width: 400px;
+	  margin-left: auto;
+      margin-right: auto;
+	  text-align: center;
+	  
+	}
+	
+	#container #main {
+	   width: 250px;
+	   float: left;
+	   border-width: 2px 1px 2px 2px;
+	   border-style: solid;
+	}
+	#container #side {
+		color: #CCC;
+		font-size: 14px;
+	width: 100px;
+	height: 430px;
+	float: left;
+	padding: 10px;
+	background-color: #444;
+	border-width: 2px 2px 2px 1px;
+	border-style: solid;
+	border-color: #000;
+	
+	
+	}
+
+   </style>
+</head>
+
+<body>
+  <div id="container">
+    <h1>Tetris</h1>
+      
+      
+      <div id="main">
+        <canvas id="main-canvas" width="250" height="450"></canvas>
+      </div>
+      <div id="side">
+        <p>Score: <span id="score">0</span></p>
+        <p>Level: <span id="level">1</span></p>
+        <h3>Next Block:</h3>
+        <canvas id="next" width="100" height="100"></canvas>
+        
+        <h3>Controls:</h3>
+        <p><b>Left Arrow</b> <br>Move Left</p>
+        <p><b>Right Arrow</b> <br>Move Right</p>
+        <p><b>Spacebar</b> <br>Rotate<br></p>
+      </div>
+   
+      
+  </div>
+    <script src="http://code.jquery.com/jquery-1.9.1.min.js"></script>
+    <script src="http://code.jquery.com/mobile/1.2.0/jquery.mobile-1.2.0.min.js"></script> 
+    <script type="text/javascript" src="Cell.js"></script>
+    <script type="text/javascript" src="Block.js"></script> 
+    <script type="text/javascript" src="movement.js"></script> 
+
+
+  <script type="text/javascript"> 
+
+    var CELL_SIZE = 25;
+    var INTERVAL = 500; // milliseconds
+	  var OLD_INTERVAL = INTERVAL;
+
+    var downIsPressed = false; //means to keep track of whether or not the down arrow is pressed. Glitch fix for levelUp.
+    
+	  //main game screen canvas
+    var canvas = document.getElementById('main-canvas');
+    var ctx = canvas.getContext('2d');
+	  
+	  //nextBlock canvas
+	  var nextCanvas = document.getElementById('next'); //nextBlock canvas.
+    var nextCtx = next.getContext('2d');
+	  
+    //array of inactive cells, used for row deletion
+    var inactiveCells = [];
+
+    //initialization of first blocks
+    var activeBlock = new Block(Math.floor(Math.random() * 7), 5, 0);
+	  var nextBlock = new Block(Math.floor(Math.random() * 7), 1, 1);
+	  
+    //score and game complete variables
+	  var completedRows = 0;
+    var level = 1;
+	  var isRunning = true;
+	  
+	  //Array of cell pictures
+	  var cellPictures = [];  
+    for(var i = 0; i < 7; ++i) cellPictures.push(new Image());    
+      	
+    //source images for all the different colored cells
+    cellPictures[0].src = './img/I_CELL.gif';
+    	cellPictures[1].src = './img/O_CELL.gif';
+   	cellPictures[2].src = './img/Z_CELL.gif';
+    	cellPictures[3].src = './img/S_CELL.gif';
+    	cellPictures[4].src = './img/T_CELL.gif';  
+   	cellPictures[5].src = './img/L_CELL.gif';
+    	cellPictures[6].src = './img/J_CELL.gif';
+		
+    //clears grid during drawing
+    function clearGrid() {
+      ctx.fillStyle = '#333';
+      ctx.fillRect(0, 0, 10 * CELL_SIZE, 18 * CELL_SIZE);
+      nextCtx.fillStyle = '#444';
+      nextCtx.fillRect(0, 0, 4 * CELL_SIZE, 4 * CELL_SIZE);
+    }
+
+    //draw function. Draws all the inactive cells first, then the active block and next block.
+    function draw() {
+      clearGrid();
+      for (var i = 0; i < inactiveCells.length; ++i){
+        inactiveCells[i].draw(ctx);
+      }
+      
+      activeBlock.draw(ctx);
+      nextBlock.draw(nextCtx);
+    }
+
+    function update() { //Update function, handled every time the interval is passed.
+      if(activeBlock.canDrop()) { //Checks to see if a block can be dropped, and does so if it can.
+        activeBlock.drop();
+      } else { //If a block cannot be dropped, 
+
+        for (var i = 0; i < 4; ++i) { //it chops the block into its individual cells, pushes each onto the inactiveCells array,
+          inactiveCells.push(activeBlock.cells[i]);
+        }
+        
+        //checks to see if rows can be completed,
+        completeRows();
+
+        //and creates the new blocks to be dropped.
+        activeBlock = new Block(nextBlock.type, 5, 0);
+        nextBlock = new Block(Math.floor(Math.random() * 7), 1, 1);
+
+        //if the NEW active block cannot drop (IE, there is something blocking it at the top of the screen) the game is over.
+        if(activeBlock.canDrop() === false) {
+          isRunning = false;
+          clearInterval(INTERVAL);
+          alert('Game Over!');
+        }        
+      }
+    };
+
+    function increaseSpeed() { //increased the speed of the Interval when called upon by the Down Arrow or the tapHold function
+      if(OLD_INTERVAL === INTERVAL) {
+        INTERVAL = INTERVAL - (INTERVAL * .75);
+      }
+    };
+    
+    function resetSpeed() { //function used to reset the game speed after the 'down arrow' is released.
+        INTERVAL = OLD_INTERVAL;
+        OLD_INTERVAL = INTERVAL;
+    };
+
+    function completeRows() {
+      var row = findNextCompletedRow();
+        
+      while (row != -1) {
+        removeRow(row);
+        updateScore();
+        row = findNextCompletedRow();
+      }
+    };
+
+    function findNextCompletedRow() {
+      for(var row = 17; row >= 0; --row) {
+        var rowCellsCount = 0;       
+        for(var i = 0; i < inactiveCells.length; ++i) {
+          if(inactiveCells[i].y === row) rowCellsCount++;
+        }
+          
+        if(rowCellsCount === 10) {
+          return row;
+        }
+      }
+
+      return -1;
+    };
+
+    function removeRow(row) {
+      for(var i = inactiveCells.length - 1; i >= 0; --i) {
+        if(inactiveCells[i].y === row) {
+          inactiveCells.splice(i, 1);
+        } 
+      }
+      dropRows(row);
+    };
+
+    function dropRows(row) {
+      for(var i = 0; i < inactiveCells.length; ++i) {
+        if(inactiveCells[i].y < row) {
+          inactiveCells[i].y++;
+        }
+      }
+    };
+    
+    function updateScore() {
+      completedRows++;
+      document.getElementById('score').innerHTML = completedRows;
+      if(completedRows / 10 >= level) {
+        updateLevel();
+      }
+    }
+
+    function updateLevel() {
+      level++;
+      levelUp();
+      document.getElementById('level').innerHTML = level;
+    }
+
+    function levelUp() { //increases the speed of the game by 5% plus a literal 5 ms. Called when rows > 10, 20, 30, etc.
+      if (downIsPressed) INTERVAL = OLD_INTERVAL;
+      if(level < 10) {
+        INTERVAL = INTERVAL - (INTERVAL * .05) - 5;
+        OLD_INTERVAL = INTERVAL;
+      } else {
+        INTERVAL = INTERVAL - (INTERVAL * .10);
+        OLD_INTERVAL = INTERVAL;
+      }
+    };
+    function gameLoop() {
+      update();
+      draw();
+
+      if(isRunning) setTimeout('gameLoop()', INTERVAL);
+
+    };
+
+
+    //Starts the Game
+    gameLoop();
+
+   </script>
+
+</body>
+</html>
